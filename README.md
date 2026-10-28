@@ -74,10 +74,11 @@ Der Agent schreibt in Markdown: `#` Überschriften, `-`/`1.` Listen, `>` Zitate,
 | `DATA_REGION` | Variable | `eu` | Speicherort der Daten. `""` = keine Einschränkung. Vor dem ersten Speichern festlegen: Bestehende Daten ziehen nicht um. |
 | `PUBLIC_URL` | Variable | Adresse der Anfrage | Feste Adresse, falls du eine eigene Domain nutzt |
 | `FEEDBACK_URL` | Variable | Empfänger des Entwicklers | Ziel des Werkzeugs `send_feedback`. `""` entfernt es. |
-| `BYCS_USER`, `BYCS_PASS` | Secrets | nicht gesetzt | Optionale ByCS-Anmeldung; schaltet die ByCS-Werkzeuge und Drive-Backups frei |
-| `BYCS_SCHOOL` | Secret | nicht gesetzt | Die ByCS-Nummer deiner Schule (z. B. `0284`), nötig für ByCS |
+| `BYCS_USER`, `BYCS_PASS`, `BYCS_SCHOOL` | Secrets | nicht gesetzt | Nur für Technikleute: ByCS-Anmeldung als Secrets. Einfacher geht es auf der Einstellungsseite (siehe unten). |
 
-Wöchentliches ByCS-Backup: Cron `0 3 * * 1` (montags 03:00 UTC), in den Ordner `cowork Dateien backup`.
+### ByCS verbinden
+
+In Nexus Light: Dokumentliste → **Einstellungen** → Schulnummer (steht in deiner Drive-Adresse, z. B. `0284.drive.bycs.de`), Benutzername und Passwort → **Verbinden und testen**. Die Anmeldung wird sofort geprüft; das Passwort wird verschlüsselt in deinem Cloudflare-Konto gespeichert (Schlüssel aus deinem Nexus-Passwort). Danach kann der Agent Drive und Lernplattform nutzen, und jeden Montag (03:00 UTC) landet ein Backup im Ordner `cowork Dateien backup`.
 
 ## Warum es gratis und leicht bleibt
 
@@ -86,6 +87,7 @@ Wöchentliches ByCS-Backup: Cron `0 3 * * 1` (montags 03:00 UTC), in den Ordner 
 - Jedes Dokument ist ein Durable Object, das schläft, solange niemand tippt (WebSocket-Hibernation).
 - .docx-Export und Backups entstehen in Durable Objects, nicht im Worker mit seinem 10-ms-Limit.
 - Gemessen: Seitenaufruf ca. 2 ms CPU, MCP-Aufruf ca. 4 ms, jeder Tastendruck ca. 2 ms im Dokument.
+- Im Browser (Galaxy Tab S8 Ultra, Chrome): 2–3 MB JavaScript-Speicher für ein Referat mit Tabelle und Kommentar; während der Agent live tippt, ca. 13 % eines Prozessorkerns.
 
 ## Backups
 
@@ -108,7 +110,7 @@ Keine Rechtsberatung. Ausführlich: [Rechtliche Hinweise](https://neuro-net.net/
 - **KI-Anbieter:** Liest oder schreibt ChatGPT, Claude oder ein anderer Assistent über MCP ein Dokument, gehen diese Inhalte an den Anbieter, unter dessen Bedingungen. Sag das den Personen, mit denen du teilst.
 - **Teilen-Links** erlauben jedem, der sie hat, dieses eine Dokument zu lesen und zu bearbeiten. Namen im Dokument sind selbst gewählt und nicht geprüft. Es gibt nur technisch notwendige Cookies (Anmeldung, Zugriff per Teilen-Link; § 25 Abs. 2 TDDDG), kein Tracking. Lässt du andere deine Instanz nutzen, brauchst du einen eigenen Datenschutzhinweis.
 - **Schule, Kinder und Jugendliche:** Bei Nutzern unter 16 können die Einwilligung der Eltern (Art. 8 DSGVO) und die Regeln von Schule oder Schulträger nötig sein. Nexus Light ist kein von einem Kultusministerium freigegebener Dienst.
-- **ByCS** ist optional und meldet sich mit deinen eigenen Zugangsdaten an, die verschlüsselt als Cloudflare-Secrets liegen. Es gelten die ByCS-Bedingungen; Nexus Light ist kein offizieller ByCS-Dienst und steht in keiner Verbindung zum Freistaat Bayern. Die Anbindung kann aufhören zu funktionieren, wenn sich die ByCS-Anmeldung ändert (z. B. Zwei-Faktor).
+- **ByCS** ist optional und meldet sich mit deinen eigenen Zugangsdaten an, die verschlüsselt in deinem Cloudflare-Konto liegen. Es gelten die ByCS-Bedingungen; Nexus Light ist kein offizieller ByCS-Dienst und steht in keiner Verbindung zum Freistaat Bayern. Die Anbindung kann aufhören zu funktionieren, wenn sich die ByCS-Anmeldung ändert (z. B. Zwei-Faktor).
 - **Feedback** ist standardmäßig an, sendet aber nichts von selbst: Die KI muss dir den genauen Text zeigen, und du musst jeder Nachricht zustimmen. Gesendet werden nur dieser Text, eine Kategorie, die Version, der Name des Agenten und eine zufällige Installations-Kennung; nie Dokumente, Dateien, Zugangsdaten oder deine IP-Adresse. Gespeichert auf einem Server in der EU (Litauen), gelöscht nach 12 Monaten. [Datenschutzhinweis](https://neuro-net.net/nexus-feedback/datenschutz).
 - **Keine Gewähr:** Nexus Light wird kostenlos und ohne Gewähr bereitgestellt. Die Haftung ist ausgeschlossen, soweit gesetzlich zulässig (nicht bei Vorsatz, grober Fahrlässigkeit oder Verletzung von Leben, Körper oder Gesundheit).
 
@@ -211,10 +213,11 @@ The agent writes markdown: `#` headings, `-`/`1.` lists, `>` quotes, `| tables |
 | `DATA_REGION` | var | `eu` | Where data is stored. `""` = no restriction. Decide before storing data: existing objects never move. |
 | `PUBLIC_URL` | var | request origin | Canonical address, if you use your own domain |
 | `FEEDBACK_URL` | var | developer's receiver | Where `send_feedback` posts. `""` removes the tool. |
-| `BYCS_USER`, `BYCS_PASS` | secrets | unset | Optional ByCS login; enables the ByCS tools and Drive backups |
-| `BYCS_SCHOOL` | secret | unset | Your school's ByCS number (e.g. `0284`), required for ByCS |
+| `BYCS_USER`, `BYCS_PASS`, `BYCS_SCHOOL` | secrets | unset | For technical users: ByCS login as secrets. The settings page (below) is easier. |
 
-Weekly ByCS backup: cron `0 3 * * 1` (Mondays 03:00 UTC), into the folder `cowork Dateien backup`.
+### Connect ByCS
+
+In Nexus Light: document list → **Einstellungen** (settings) → school number (part of your Drive address, e.g. `0284.drive.bycs.de`), username and password → **Verbinden und testen**. The login is checked right away; the password is stored encrypted in your Cloudflare account (key derived from your Nexus password). Then the agent can use Drive and Lernplattform, and every Monday (03:00 UTC) a backup goes into the folder `cowork Dateien backup`.
 
 ## How it stays free and light
 
@@ -223,6 +226,7 @@ Weekly ByCS backup: cron `0 3 * * 1` (Mondays 03:00 UTC), into the folder `cowor
 - Each document is a Durable Object that sleeps while nobody types (WebSocket hibernation).
 - .docx export and backups are built inside Durable Objects, not in the 10 ms worker.
 - Measured: page loads ~2 ms CPU, MCP calls ~4 ms, each keystroke ~2 ms in the document object.
+- In the browser (Galaxy Tab S8 Ultra, Chrome): 2–3 MB of JavaScript memory for a short paper with a table and a comment; about 13 % of one CPU core while the agent types live.
 
 ## Backups
 
@@ -245,7 +249,7 @@ Not legal advice. Full text (German): [Rechtliche Hinweise](https://neuro-net.ne
 - **AI providers:** when ChatGPT, Claude or another assistant reads or writes a document over MCP, that content goes to the provider under its terms. Tell people you share documents with.
 - **Share links** let anyone holding them read and edit that one document. Names shown in documents are self-chosen and not verified. Only technically necessary cookies are used (sign-in, share access; § 25 (2) TDDDG); no tracking. If you let others use your instance, you need your own privacy notice.
 - **Schools, children and teenagers:** for users under 16, parental consent (Art. 8 GDPR) and the rules of the school or school authority may apply. Nexus Light is not a service approved by a ministry of education.
-- **ByCS** is optional and logs in with your own credentials, stored encrypted as Cloudflare secrets. ByCS terms apply; Nexus Light is not an official ByCS service and not affiliated with the Free State of Bavaria. It can stop working if ByCS changes its login (e.g. two-factor authentication).
+- **ByCS** is optional and logs in with your own credentials, stored encrypted in your Cloudflare account. ByCS terms apply; Nexus Light is not an official ByCS service and not affiliated with the Free State of Bavaria. It can stop working if ByCS changes its login (e.g. two-factor authentication).
 - **Feedback** is on by default but sends nothing on its own: the AI must show you the exact text and you must agree to each message. Sent are only that text, a category, the version, the agent's name and a random installation id; never documents, files, credentials or your IP address. Stored on a server in the EU (Lithuania) and deleted after 12 months. [Privacy notice](https://neuro-net.net/nexus-feedback/datenschutz).
 - **No warranty:** Nexus Light is provided free of charge and as is. Liability is excluded as far as the law allows (not for intent, gross negligence or injury to life, body or health).
 

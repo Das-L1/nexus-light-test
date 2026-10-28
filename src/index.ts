@@ -9,7 +9,7 @@ import { Store } from "./store";
 import { DocRoom } from "./doc";
 import { handleWeb, shareKey } from "./web";
 import { storeStub, docStub, region } from "./region";
-import { bycsEnabled, spaces, listFolder, moodle, moodleMe, BACKUP_FOLDER } from "./bycs";
+import { spaces, listFolder, moodle, moodleMe, BACKUP_FOLDER } from "./bycs";
 
 export { Store, DocRoom };
 
@@ -262,69 +262,75 @@ export class NexusMCP extends McpAgent<Env, Record<string, never>, Props> {
     // ---- backup ----
     s.registerTool("backup_now", {
       title: "Back up everything",
-      description: `Back up all documents (.docx), memories and files. target "bycs" uploads a .zip into the user's ByCS-Drive folder "${BACKUP_FOLDER}" (only when ByCS is set up); "link" returns the download link for the user.`,
-      inputSchema: { target: z.enum(["bycs", "link"]).default(bycsEnabled(this.env) ? "bycs" : "link") },
+      description: `Back up all documents (.docx), memories and files. With ByCS connected, the .zip goes into the user's ByCS-Drive folder "${BACKUP_FOLDER}"; otherwise (or with target "link") you get the download link for the user.`,
+      inputSchema: { target: z.enum(["auto", "bycs", "link"]).default("auto") },
     }, async ({ target }) => {
-      if (target === "link" || !bycsEnabled(this.env)) return text(`Backup herunterladen (als Besitzer angemeldet): ${await this.origin()}/backup.zip`);
+      const connected = !!(await store(this.env).bycsStatus());
+      if (target === "link" || (target === "auto" && !connected)) return text(`Backup herunterladen (als Besitzer angemeldet): ${await this.origin()}/backup.zip`);
       return text(`Backup gespeichert: ${await store(this.env).backupToBycs()}`);
     });
 
-    // ---- ByCS (only when the owner set BYCS_USER/BYCS_PASS) ----
-    if (bycsEnabled(this.env)) {
-      s.registerTool("bycs_drives", {
-        title: "ByCS-Drive spaces",
-        description: "List the user's ByCS-Drive spaces (personal space, class and project spaces).",
-        inputSchema: {}, annotations: { readOnlyHint: true, openWorldHint: true },
-      }, async () => text((await spaces(this.env)).map((x) => `${x.type.padEnd(9)} ${x.name}  (${x.id})`).join("\n")));
+    // ---- ByCS: always listed, so clients never need a refresh; they explain how to connect when needed ----
+    const bycs = async () => {
+      const c = await store(this.env).bycsCreds();
+      if (!c) throw new Error(`ByCS ist noch nicht verbunden. Der Nutzer kann es in einer Minute einrichten: ${await this.origin()}/settings (als Besitzer anmelden, Schulnummer, Benutzername und Passwort eingeben).`);
+      return c;
+    };
 
-      s.registerTool("bycs_list", {
-        title: "List ByCS-Drive folder",
-        description: "List files and folders in a ByCS-Drive space (name or id; default: personal space) at path (default: root).",
-        inputSchema: { space: z.string().optional(), path: z.string().default("/") }, annotations: { readOnlyHint: true, openWorldHint: true },
-      }, async ({ space, path }) => {
-        const r = await listFolder(this.env, space, path);
-        return text(r.items.length ? `${r.space}${r.path}\n` + r.items.map((i) => `${i.dir ? "📁" : "  "} ${i.name}${i.dir ? "/" : ""}  ${i.dir ? "" : `${Math.ceil(i.size / 1024)} KB  `}${i.mtime}`).join("\n") : `(leer) ${r.space}${r.path}`);
-      });
+    s.registerTool("bycs_drives", {
+      title: "ByCS-Drive spaces",
+      description: "List the user's ByCS-Drive spaces (BayernCloud Schule: personal space, class and project spaces).",
+      inputSchema: {}, annotations: { readOnlyHint: true, openWorldHint: true },
+    }, async () => text((await spaces(await bycs())).map((x) => `${x.type.padEnd(9)} ${x.name}  (${x.id})`).join("\n")));
 
-      s.registerTool("moodle_courses", {
-        title: "Lernplattform courses",
-        description: "List the user's ByCS-Lernplattform (Moodle) courses with ids.",
-        inputSchema: {}, annotations: { readOnlyHint: true, openWorldHint: true },
-      }, async () => {
-        const me = await moodleMe(this.env);
-        const courses = await moodle(this.env, "core_enrol_get_users_courses", { userid: String(me.userid) });
-        return text((courses as any[]).map((c) => `${String(c.id).padEnd(8)} ${c.fullname}`).join("\n"));
-      });
+    s.registerTool("bycs_list", {
+      title: "List ByCS-Drive folder",
+      description: "List files and folders in a ByCS-Drive space (name or id; default: personal space) at path (default: root).",
+      inputSchema: { space: z.string().optional(), path: z.string().default("/") }, annotations: { readOnlyHint: true, openWorldHint: true },
+    }, async ({ space, path }) => {
+      const r = await listFolder(await bycs(), space, path);
+      return text(r.items.length ? `${r.space}${r.path}\n` + r.items.map((i) => `${i.dir ? "📁" : "  "} ${i.name}${i.dir ? "/" : ""}  ${i.dir ? "" : `${Math.ceil(i.size / 1024)} KB  `}${i.mtime}`).join("\n") : `(leer) ${r.space}${r.path}`);
+    });
 
-      s.registerTool("moodle_deadlines", {
-        title: "Upcoming deadlines",
-        description: "Upcoming assignment due dates and other calendar events from the Lernplattform.",
-        inputSchema: { limit: z.number().int().min(1).max(50).default(15) }, annotations: { readOnlyHint: true, openWorldHint: true },
-      }, async ({ limit }) => {
-        const r = await moodle(this.env, "core_calendar_get_action_events_by_timesort", { timesortfrom: String(Math.floor(Date.now() / 1000)), limitnum: String(limit) });
-        const ev = (r.events ?? []) as any[];
-        return text(ev.length ? ev.map((e) => `${new Date(e.timesort * 1000).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}  ${e.course?.shortname ?? ""}  ${e.name}`).join("\n") : "Keine anstehenden Termine.");
-      });
+    s.registerTool("moodle_courses", {
+      title: "Lernplattform courses",
+      description: "List the user's ByCS-Lernplattform (Moodle) courses with ids.",
+      inputSchema: {}, annotations: { readOnlyHint: true, openWorldHint: true },
+    }, async () => {
+      const c = await bycs();
+      const me = await moodleMe(c);
+      const courses = await moodle(c, "core_enrol_get_users_courses", { userid: String(me.userid) });
+      return text((courses as any[]).map((x) => `${String(x.id).padEnd(8)} ${x.fullname}`).join("\n"));
+    });
 
-      s.registerTool("moodle_course_contents", {
-        title: "Course contents",
-        description: "Sections, activities and files of one Lernplattform course (id from moodle_courses). Labels and page texts are included as plain text.",
-        inputSchema: { courseid: z.number().int() }, annotations: { readOnlyHint: true, openWorldHint: true },
-      }, async ({ courseid }) => {
-        const secs = await moodle(this.env, "core_course_get_contents", { courseid: String(courseid) });
-        const strip = (h = "") => h.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
-        const lines: string[] = [];
-        for (const sec of secs as any[]) {
-          lines.push(`## ${sec.name}`);
-          if (sec.summary) lines.push(strip(sec.summary).slice(0, 2000));
-          for (const m of sec.modules ?? []) {
-            lines.push(`- [${m.modname}] ${m.name}${m.url ? ` (${m.url})` : ""}`);
-            if (m.description) lines.push("  " + strip(m.description).slice(0, 3000));
-          }
+    s.registerTool("moodle_deadlines", {
+      title: "Upcoming deadlines",
+      description: "Upcoming assignment due dates and other calendar events from the ByCS-Lernplattform.",
+      inputSchema: { limit: z.number().int().min(1).max(50).default(15) }, annotations: { readOnlyHint: true, openWorldHint: true },
+    }, async ({ limit }) => {
+      const r = await moodle(await bycs(), "core_calendar_get_action_events_by_timesort", { timesortfrom: String(Math.floor(Date.now() / 1000)), limitnum: String(limit) });
+      const ev = (r.events ?? []) as any[];
+      return text(ev.length ? ev.map((e) => `${new Date(e.timesort * 1000).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}  ${e.course?.shortname ?? ""}  ${e.name}`).join("\n") : "Keine anstehenden Termine.");
+    });
+
+    s.registerTool("moodle_course_contents", {
+      title: "Course contents",
+      description: "Sections, activities and files of one Lernplattform course (id from moodle_courses). Labels and page texts are included as plain text.",
+      inputSchema: { courseid: z.number().int() }, annotations: { readOnlyHint: true, openWorldHint: true },
+    }, async ({ courseid }) => {
+      const secs = await moodle(await bycs(), "core_course_get_contents", { courseid: String(courseid) });
+      const strip = (h = "") => h.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+      const lines: string[] = [];
+      for (const sec of secs as any[]) {
+        lines.push(`## ${sec.name}`);
+        if (sec.summary) lines.push(strip(sec.summary).slice(0, 2000));
+        for (const m of sec.modules ?? []) {
+          lines.push(`- [${m.modname}] ${m.name}${m.url ? ` (${m.url})` : ""}`);
+          if (m.description) lines.push("  " + strip(m.description).slice(0, 3000));
         }
-        return text(lines.join("\n") || "(keine Inhalte)");
-      });
-    }
+      }
+      return text(lines.join("\n") || "(keine Inhalte)");
+    });
 
     // ---- memory ----
     s.registerTool("memory_save", {
@@ -504,7 +510,7 @@ let provider: OAuthProvider | null = null;
 export default {
   /** Weekly cron: back up into the ByCS-Drive when it is set up. */
   async scheduled(_event: ScheduledController, env: Env) {
-    if (!bycsEnabled(env)) return;
+    if (!(await storeStub(env).bycsStatus())) return;
     const age = await storeStub(env).backupAge();
     if (age && (!age.ever || age.days >= 6)) console.log("ByCS backup:", await storeStub(env).backupToBycs());
   },

@@ -4,7 +4,7 @@ import { DurableObject } from "cloudflare:workers";
 import { zipSync, strToU8 } from "fflate";
 import { docStub } from "./region";
 import { fileName } from "./web";
-import { bycsEnabled, uploadFile, BACKUP_FOLDER } from "./bycs";
+import { uploadFile, credsFromEnv, BACKUP_FOLDER, type Creds } from "./bycs";
 
 const MAX_FILE = 2 * 1024 * 1024 - 1024; // a SQLite row tops out at 2 MB
 
@@ -48,12 +48,47 @@ export class Store extends DurableObject<Env> {
 
   /** Upload a backup into the ByCS-Drive folder and count it as the latest backup. */
   async backupToBycs() {
-    if (!bycsEnabled(this.env)) throw new Error("ByCS ist nicht eingerichtet (BYCS_USER, BYCS_PASS und BYCS_SCHOOL nötig).");
+    const creds = await this.bycsCreds();
+    if (!creds) throw new Error("ByCS ist noch nicht verbunden (Einstellungen → ByCS verbinden).");
     const { name, data } = await this.buildBackup();
-    const where = await uploadFile(this.env, BACKUP_FOLDER, name, data, "application/zip");
+    const where = await uploadFile(creds, BACKUP_FOLDER, name, data, "application/zip");
     this.setMeta("lastBackup", new Date().toISOString());
     this.setMeta("lastBycsBackup", new Date().toISOString());
     return `${where} (${Math.ceil(data.byteLength / 1024)} KB)`;
+  }
+
+  // ---- ByCS login, stored AES-GCM encrypted with a key derived from the owner password ----
+  private async bycsKey() {
+    const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${this.env.OWNER_PASSWORD}:nexus-light-bycs`));
+    return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+  }
+
+  async bycsSave(c: Creds) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await this.bycsKey(), new TextEncoder().encode(JSON.stringify(c))));
+    const blob = new Uint8Array(iv.length + ct.length); blob.set(iv); blob.set(ct, iv.length);
+    this.setMeta("bycs", btoa(String.fromCharCode(...blob)));
+  }
+
+  bycsClear() { this.sql.exec(`DELETE FROM meta WHERE key = 'bycs'`); }
+
+  /** The ByCS login: BYCS_* secrets win, else the one saved on the settings page (null if none or unreadable). */
+  async bycsCreds(): Promise<Creds | null> {
+    const fromEnv = credsFromEnv(this.env);
+    if (fromEnv) return fromEnv;
+    const b64 = this.getMeta("bycs");
+    if (!b64) return null;
+    try {
+      const blob = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
+      const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: blob.slice(0, 12) }, await this.bycsKey(), blob.slice(12));
+      return JSON.parse(new TextDecoder().decode(pt));
+    } catch { return null; } // owner password changed: the user has to connect again
+  }
+
+  /** What the settings page shows: where the login comes from and for whom (never the password). */
+  async bycsStatus() {
+    const c = await this.bycsCreds();
+    return c ? { source: credsFromEnv(this.env) ? "secrets" : "settings", school: c.school, user: c.user, lastBackup: this.getMeta("lastBycsBackup") } : null;
   }
 
   /** A random id for this installation (sent with feedback instead of anything identifying). */

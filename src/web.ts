@@ -1,5 +1,5 @@
 import { storeStub, docStub } from "./region";
-import { bycsEnabled } from "./bycs";
+import { testLogin, BACKUP_FOLDER } from "./bycs";
 // Human side: owner sign-in, document list, the editor page, share links and the editor WebSocket.
 const enc = new TextEncoder();
 export const esc = (v: string) => v.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -57,7 +57,7 @@ ${error ? `<p style="color:#c2410c">${esc(error)}</p>` : ""}</form>`);
 
 function docList(origin: string, docs: { id: string; title: string; updated: string }[], bycs = false) {
   const rows = docs.map((d) => `<div class="doc"><a href="/d/${d.id}">${esc(d.title)}</a><span class="mut">${new Date(d.updated).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })} · <a href="/d/${d.id}/export.docx">.docx</a></span></div>`).join("");
-  return shell("Nexus Light", `<div class="row" style="justify-content:space-between"><h1>Dokumente</h1><a class="mut" href="/logout">abmelden</a></div>
+  return shell("Nexus Light", `<div class="row" style="justify-content:space-between"><h1>Dokumente</h1><span class="mut"><a href="/settings">Einstellungen</a> · <a href="/logout">abmelden</a></span></div>
 <form class="card row" method="post" action="/new"><input name="title" placeholder="Neues Dokument" required style="flex:1"><button class="primary">Erstellen</button></form>
 <div class="card">${rows || '<span class="mut">Noch keine Dokumente. Lege eins an oder bitte deinen Agenten darum.</span>'}</div>
 <div class="row" style="justify-content:space-between"><p class="mut">MCP: ${esc(origin)}/mcp</p><span class="row"><a class="mut" href="/backup.zip">Backup aller Dokumente (.zip)</a>${bycs ? `<form method="post" action="/backup/bycs" style="margin:0"><button class="mut" style="padding:4px 8px">Backup in ByCS-Drive</button></form>` : ""}</span></div>`);
@@ -164,6 +164,27 @@ body{display:flex;flex-direction:column;background:var(--canvas);color:var(--fg)
 @media print{.top,#ribbon,#statusbar{display:none}body,#canvas{background:#fff;overflow:visible;display:block;padding:0}#page{box-shadow:none;width:auto;min-height:0;padding:0}.cursor,.ProseMirror-yjs-selection,#comments{display:none}.ProseMirror .cmt{background:none;border:0}@page{size:A4;margin:2.5cm 2.5cm 2cm}}
 `;
 
+type BycsStatus = { source: string; school: string; user: string; lastBackup: string | null } | null;
+function settingsPage(origin: string, bycs: BycsStatus, msg = "", err = "") {
+  const field = (name: string, label: string, attrs = "") => `<label style="display:grid;gap:4px;margin-bottom:10px"><span class="mut">${label}</span><input name="${name}" ${attrs} style="width:100%"></label>`;
+  const connected = bycs ? `<p>Verbunden als <b>${esc(bycs.user)}</b> (Schule ${esc(bycs.school)})${bycs.source === "secrets" ? " über Cloudflare-Secrets" : ""}.</p>
+<p class="mut">Backups landen im Ordner „${esc(BACKUP_FOLDER)}“ deiner Drive, automatisch jeden Montag. Letztes ByCS-Backup: ${bycs.lastBackup ? new Date(bycs.lastBackup).toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) : "noch keins"}.</p>
+<div class="row"><form method="post" action="/backup/bycs" style="margin:0"><button class="primary">Jetzt Backup in die Drive</button></form>
+${bycs.source === "settings" ? `<form method="post" action="/settings/bycs/disconnect" style="margin:0" onsubmit="return confirm('ByCS trennen? Die gespeicherten Zugangsdaten werden gelöscht.')"><button>Trennen</button></form>` : ""}</div>`
+    : `<p>Verbinde deine BayernCloud Schule: Dann kann dein KI-Agent deine Drive und die Lernplattform lesen, und Nexus Light speichert jede Woche ein Backup in deine Drive.</p>
+<form method="post" action="/settings/bycs">
+${field("school", "Schulnummer (steht in deiner Drive-Adresse, z. B. <b>0284</b>.drive.bycs.de)", 'required inputmode="numeric" pattern="[0-9A-Za-z]{2,10}" placeholder="0284"')}
+${field("user", "ByCS-Benutzername", 'required autocomplete="username"')}
+${field("pass", "ByCS-Passwort", 'type="password" required autocomplete="current-password"')}
+<button class="primary">Verbinden und testen</button></form>
+<p class="mut">Das Passwort wird verschlüsselt in deinem eigenen Cloudflare-Konto gespeichert (Schlüssel aus deinem Nexus-Passwort) und nur für die Anmeldung bei der ByCS verwendet. Funktioniert nicht, wenn deine Schule Zwei-Faktor-Anmeldung nutzt.</p>`;
+  return shell("Einstellungen", `<div class="row" style="justify-content:space-between"><h1>Einstellungen</h1><a class="mut" href="/">← Dokumente</a></div>
+${msg ? `<div class="card" style="border-color:#188038">${msg}</div>` : ""}${err ? `<div class="card" style="border-color:#c5221f;color:#c5221f">${esc(err)}</div>` : ""}
+<div class="card"><h2 style="font-size:17px;margin:0 0 8px">ByCS (BayernCloud Schule)</h2>${connected}</div>
+<div class="card"><h2 style="font-size:17px;margin:0 0 8px">KI verbinden</h2><p>In ChatGPT oder Claude als Connector mit OAuth hinzufügen:</p><input readonly value="${esc(origin)}/mcp" onclick="this.select()" style="width:100%"></div>
+<div class="card"><h2 style="font-size:17px;margin:0 0 8px">Backup</h2><p><a href="/backup.zip">Alle Dokumente als .zip herunterladen</a></p></div>`);
+}
+
 function editorPage(id: string, title: string, share: string | null) {
   return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#2b579a"><link rel="icon" href="/icon-192.png"><link rel="apple-touch-icon" href="/icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Nexus"><style>${EDITOR_CSS}</style></head><body>
@@ -177,7 +198,7 @@ export async function handleWeb(req: Request, env: Env): Promise<Response | null
   const p = url.pathname;
   const store = storeStub(env);
 
-  if (p === "/") return (await isOwner(req, env)) ? html(docList(url.origin, await store.docList(), bycsEnabled(env))) : html(landing(url.origin));
+  if (p === "/") return (await isOwner(req, env)) ? html(docList(url.origin, await store.docList(), !!(await store.bycsStatus()))) : html(landing(url.origin));
 
   if (p === "/login" && req.method === "POST") {
     const pw = String((await req.formData()).get("password") || "");
@@ -218,6 +239,23 @@ export async function handleWeb(req: Request, env: Env): Promise<Response | null
     await store.setMeta("lastBackup", new Date().toISOString());
     return new Response(data, { headers: { "content-type": "application/zip", "content-disposition": `attachment; filename="${name}"`, "cache-control": "no-store" } });
   }
+  // Settings: connect ByCS without touching the Cloudflare dashboard. The login is tested before it is saved.
+  if (p === "/settings" || p.startsWith("/settings/")) {
+    if (!(await isOwner(req, env))) return html(landing(url.origin, "Bitte als Besitzer anmelden."), 401);
+    if (p === "/settings/bycs" && req.method === "POST") {
+      const f = await req.formData();
+      const creds = { school: String(f.get("school") || "").trim(), user: String(f.get("user") || "").trim(), pass: String(f.get("pass") || "") };
+      if (!/^[0-9A-Za-z]{2,10}$/.test(creds.school) || !creds.user || !creds.pass) return html(settingsPage(url.origin, null, "", "Bitte Schulnummer, Benutzername und Passwort angeben."), 400);
+      try {
+        const sp = await testLogin(creds);
+        await store.bycsSave(creds);
+        return html(settingsPage(url.origin, await store.bycsStatus(), `ByCS verbunden. Gefunden: ${sp.length} Bereiche, z. B. ${sp.slice(0, 3).map((x) => esc(x.name)).join(", ")}.`));
+      } catch (e) { return html(settingsPage(url.origin, null, "", `Anmeldung fehlgeschlagen: ${(e as Error).message}`), 400); }
+    }
+    if (p === "/settings/bycs/disconnect" && req.method === "POST") { await store.bycsClear(); return html(settingsPage(url.origin, await store.bycsStatus(), "ByCS getrennt, Zugangsdaten gelöscht.")); }
+    return html(settingsPage(url.origin, await store.bycsStatus()));
+  }
+
   if (p === "/backup/bycs" && req.method === "POST") {
     if (!(await isOwner(req, env))) return html(landing(url.origin), 401);
     try { return html(shell("Backup", `<h1>Backup gespeichert</h1><p>${esc(await store.backupToBycs())}</p><a href="/">Zurück</a>`)); }

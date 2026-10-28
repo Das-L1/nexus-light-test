@@ -19,7 +19,7 @@
   // The browser editor (client/editor.ts, bundled by `npm run build:client`).
   "assets": { "directory": "./public" },
   // No id: wrangler (and the Deploy button) create the namespace on first deploy.
-  "kv_namespaces": [{ "binding": "OAUTH_KV","id": "0f9fc48d8ec943dc9b59db50352b086f" }],
+  "kv_namespaces": [{ "binding": "OAUTH_KV" }],
   // Keep all stored data in EU data centers. "" = no restriction. Set before storing data.
   // FEEDBACK_URL: the agent tool send_feedback posts there, only after the user approved the exact text.
   // Set it to "" to remove the tool. Privacy notice: https://neuro-net.net/nexus-feedback/datenschutz

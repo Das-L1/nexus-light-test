@@ -64,12 +64,15 @@ co-editing with others and the *Als App installieren* prompt.
 
 ## Optional: ByCS (Bavarian school cloud)
 
-Only for users of BayernCloud Schule. In the Cloudflare dashboard (Workers → nexus-light → Settings →
-Variables and Secrets) they add three **secrets**: `BYCS_USER`, `BYCS_PASS` and `BYCS_SCHOOL` (their
-school number, e.g. `0284`, visible in their Drive address `https://0284.drive.bycs.de`). Then
-`bycs_drives` should list their spaces, and `backup_now` saves a backup into the Drive folder
-`cowork Dateien backup` (also automatic every Monday). Point out that the password is stored
-encrypted in their Cloudflare account and that login breaks if ByCS turns on two-factor login.
+Only for users of BayernCloud Schule. Send them to `https://…workers.dev/settings` (signed in as owner;
+the document list links to it as *Einstellungen*). They enter their school number (part of their Drive
+address, e.g. `https://0284.drive.bycs.de` → `0284`), ByCS username and password, and tap
+*Verbinden und testen*: the login is checked immediately and the page lists their Drive spaces. Never
+ask for the ByCS password in the chat. Afterwards `bycs_drives` lists their spaces and `backup_now`
+saves a backup into the Drive folder `cowork Dateien backup` (also automatic every Monday). The ByCS
+tools are always available; until ByCS is connected they answer with the settings link. Point out that
+the password is stored encrypted in their Cloudflare account and that the login breaks if ByCS turns on
+two-factor login.
 
 ## Troubleshooting
 
@@ -80,7 +83,8 @@ encrypted in their Cloudflare account and that login breaks if ByCS turns on two
 | *Falsches Passwort* on the consent page | Wrong owner password. Reset it with `wrangler secret put OWNER_PASSWORD` or in the dashboard |
 | ChatGPT/Claude: connection fails | Address must end in `/mcp`; authentication must be OAuth |
 | Editor shows *verbinde …* forever | Network or ad blocker blocking WebSockets; try another network or browser |
-| ByCS tools missing | One of `BYCS_USER`, `BYCS_PASS`, `BYCS_SCHOOL` not set as a secret |
+| ByCS tools say *noch nicht verbunden* | Connect ByCS on the settings page (`/settings`) |
+| ByCS stopped working after changing the owner password | The stored login is encrypted with it: connect ByCS again on `/settings` |
 | ByCS: *Login-Formular nicht gefunden* | ByCS changed its login (e.g. two-factor); the integration cannot work then |
 
 ## Good to tell them
